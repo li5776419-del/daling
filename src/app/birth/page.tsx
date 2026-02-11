@@ -11,12 +11,17 @@ import {
   type PuppetData,
   type TrainingData,
 } from "@/lib/persistence";
+import { useUser } from "@/contexts/UserContext";
 
 export default function BirthPage() {
   const router = useRouter();
+  const { isLoggedIn } = useUser();
   const [puppetData, setPuppetData] = useState<PuppetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSkippedMode, setIsSkippedMode] = useState(false);
+  const [hasSecondMeData, setHasSecondMeData] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     generatePuppet();
@@ -30,8 +35,24 @@ export default function BirthPage() {
       localStorage.getItem("hasTrainingData") === "true";
     const skipped = localStorage.getItem("skippedTraining") === "true";
 
+    // Fetch SecondMe shades for enhanced analysis if logged in
+    let secondMeShades: string[] = [];
+    if (isLoggedIn) {
+      try {
+        const res = await fetch("/api/secondme/user/shades");
+        const data = await res.json();
+        if (data.code === 0 && data.data?.shades?.length) {
+          secondMeShades = data.data.shades.map(
+            (s: { shadeName: string }) => s.shadeName
+          );
+          setHasSecondMeData(true);
+        }
+      } catch {
+        // silently fail
+      }
+    }
+
     if (skipped || !hasTrainingData) {
-      // Skipped mode: generate default puppet
       setIsSkippedMode(true);
       const defaultPuppet = generateDefaultPuppet();
       setPuppetData(defaultPuppet);
@@ -40,14 +61,13 @@ export default function BirthPage() {
       return;
     }
 
-    // Normal mode: generate from data
     const trainingData = getTrainingData();
     if (!trainingData) {
       router.push("/upload");
       return;
     }
 
-    const puppet = await generatePuppetFromData(trainingData);
+    const puppet = await generatePuppetFromData(trainingData, secondMeShades);
     setPuppetData(puppet);
     savePuppetData(puppet);
     setLoading(false);
@@ -68,9 +88,10 @@ export default function BirthPage() {
   }
 
   async function generatePuppetFromData(
-    data: TrainingData
+    data: TrainingData,
+    shadeNames: string[] = []
   ): Promise<PuppetData> {
-    const isRational = analyzeDataType(data);
+    const isRational = analyzeDataType(data, shadeNames);
 
     const personality = {
       style: (isRational ? "rational" : "emotional") as
@@ -92,25 +113,15 @@ export default function BirthPage() {
     };
   }
 
-  function analyzeDataType(data: TrainingData) {
+  function analyzeDataType(data: TrainingData, shadeNames: string[] = []) {
     const rationalKeywords = [
-      "数据",
-      "分析",
-      "逻辑",
-      "思考",
-      "工作",
-      "技术",
+      "数据", "分析", "逻辑", "思考", "工作", "技术",
     ];
     const emotionalKeywords = [
-      "感受",
-      "感觉",
-      "喜欢",
-      "美",
-      "艺术",
-      "情感",
+      "感受", "感觉", "喜欢", "美", "艺术", "情感",
     ];
 
-    const allText = Object.values(data).join(" ");
+    const allText = Object.values(data).join(" ") + " " + shadeNames.join(" ");
     const rationalScore = rationalKeywords.filter((k) =>
       allText.includes(k)
     ).length;
@@ -154,6 +165,37 @@ export default function BirthPage() {
     };
   }
 
+  async function syncToSecondMe() {
+    if (!puppetData || syncing) return;
+    setSyncing(true);
+    setSyncFeedback(null);
+
+    try {
+      const noteContent = [
+        `【灵偶自述】${puppetData.description}`,
+        `【核心特质】${puppetData.tags.join("、")}`,
+        `【价值观】${puppetData.values.join("、")}`,
+      ].join("\n\n");
+
+      const res = await fetch("/api/secondme/note/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: noteContent }),
+      });
+      const result = await res.json();
+      if (result.code === 0) {
+        setSyncFeedback("已同步到 SecondMe");
+        setTimeout(() => setSyncFeedback(null), 3000);
+      } else {
+        setSyncFeedback("同步失败，请重试");
+      }
+    } catch {
+      setSyncFeedback("网络错误");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="page-bg flex items-center justify-center min-h-screen">
@@ -193,6 +235,19 @@ export default function BirthPage() {
       </button>
 
       <div className="max-w-6xl mx-auto pt-12">
+        {/* SecondMe 数据增强提示 */}
+        {hasSecondMeData && !isSkippedMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 p-4 rounded-2xl bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200"
+          >
+            <p className="text-center text-purple-700 font-medium text-sm">
+              已融合你的 SecondMe 数据，灵偶人格分析更加精准
+            </p>
+          </motion.div>
+        )}
+
         {/* 跳过模式提示 */}
         {isSkippedMode && (
           <motion.div
@@ -201,7 +256,7 @@ export default function BirthPage() {
             className="mb-8 p-4 rounded-2xl bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200"
           >
             <p className="text-center text-purple-700 font-medium">
-              💡 这是基于默认数据生成的灵偶。填写真实数据后，灵偶会更懂你！
+              这是基于默认数据生成的灵偶。填写真实数据后，灵偶会更懂你！
             </p>
           </motion.div>
         )}
@@ -212,7 +267,11 @@ export default function BirthPage() {
           className="text-center mb-12"
         >
           <h1 className="text-5xl font-bold mb-4 gradient-text">
-            {isSkippedMode ? "你的临时灵偶已生成" : "你的灵偶已诞生"}
+            {isSkippedMode
+              ? "你的临时灵偶已生成"
+              : hasSecondMeData
+                ? "基于你的 SecondMe 数据生成"
+                : "你的灵偶已诞生"}
           </h1>
           <p className="text-gray-600">
             {isSkippedMode
@@ -236,7 +295,7 @@ export default function BirthPage() {
             />
             {isSkippedMode && (
               <div className="mt-4 px-4 py-2 rounded-full bg-yellow-100 text-yellow-700 text-sm font-medium">
-                ⚠️ 临时状态
+                临时状态
               </div>
             )}
             <p className="mt-4 text-lg font-semibold text-gray-700">
@@ -254,7 +313,7 @@ export default function BirthPage() {
             {/* 灵偶自述 */}
             <div className="card">
               <h2 className="text-xl font-bold text-purple-600 mb-4 flex items-center gap-2">
-                <span className="text-2xl">💬</span> 灵偶自述
+                灵偶自述
               </h2>
               <p className="text-gray-700 leading-relaxed italic">
                 &ldquo;{puppetData.description}&rdquo;
@@ -264,7 +323,7 @@ export default function BirthPage() {
             {/* 核心特质 */}
             <div className="card">
               <h2 className="text-xl font-bold text-purple-600 mb-4 flex items-center gap-2">
-                <span className="text-2xl">✨</span> 核心特质
+                核心特质
               </h2>
               <div className="flex flex-wrap gap-2">
                 {puppetData.tags.map((tag) => (
@@ -281,7 +340,7 @@ export default function BirthPage() {
             {/* 价值观共鸣 */}
             <div className="card">
               <h2 className="text-xl font-bold text-purple-600 mb-4 flex items-center gap-2">
-                <span className="text-2xl">🎯</span> 价值观共鸣
+                价值观共鸣
               </h2>
               <div className="space-y-2">
                 {puppetData.values.map((value) => (
@@ -304,17 +363,42 @@ export default function BirthPage() {
         >
           <button
             onClick={() => router.push("/preference")}
-            className="btn-hero mb-6"
+            className="btn-hero mb-4"
           >
             赋予它使命
           </button>
+
+          {/* Sync to SecondMe button */}
+          {isLoggedIn && (
+            <div className="mb-4">
+              <button
+                onClick={syncToSecondMe}
+                disabled={syncing}
+                className="btn-secondary text-sm"
+              >
+                {syncing ? "同步中..." : "同步灵偶到 SecondMe"}
+              </button>
+              {syncFeedback && (
+                <p
+                  className={`text-sm mt-2 font-medium ${
+                    syncFeedback.includes("失败") || syncFeedback.includes("错误")
+                      ? "text-red-500"
+                      : "gradient-text"
+                  }`}
+                >
+                  {syncFeedback}
+                </p>
+              )}
+            </div>
+          )}
+
           <p className="text-sm text-gray-500">
             灵偶形态会随你的真实成长与互动而持续演化
           </p>
 
           {isSkippedMode && (
             <p className="text-sm text-purple-600 mt-3 font-medium">
-              💡 完善数据后，灵偶的匹配精准度会显著提升
+              完善数据后，灵偶的匹配精准度会显著提升
             </p>
           )}
         </motion.div>

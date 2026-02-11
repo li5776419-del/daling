@@ -37,20 +37,12 @@ export default function UserProfile() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        <div className="loading-spinner" />
       </div>
     );
   }
 
   if (!user) return null;
-
-  const confidenceColors: Record<string, string> = {
-    VERY_HIGH: "bg-primary text-white",
-    HIGH: "bg-primary-light/20 text-primary-dark",
-    MEDIUM: "bg-accent-light/20 text-accent",
-    LOW: "bg-gray-100 text-gray-600",
-    VERY_LOW: "bg-gray-50 text-gray-400",
-  };
 
   return (
     <div className="space-y-6">
@@ -59,39 +51,40 @@ export default function UserProfile() {
           <img
             src={user.avatar}
             alt={user.name}
-            className="w-16 h-16 rounded-full ring-2 ring-primary/20"
+            className="w-16 h-16 rounded-full ring-2 ring-purple-300"
           />
         ) : (
-          <div className="w-16 h-16 rounded-full gradient-primary flex items-center justify-center text-white text-xl font-semibold">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-semibold"
+            style={{ background: "var(--gradient-main)" }}
+          >
             {user.name?.[0] || "?"}
           </div>
         )}
         <div>
-          <h2 className="text-xl font-semibold">{user.name || "用户"}</h2>
+          <h2 className="text-xl font-bold gradient-text">{user.name || "用户"}</h2>
           {user.email && (
-            <p className="text-text-secondary text-sm">{user.email}</p>
+            <p className="text-gray-500 text-sm">{user.email}</p>
           )}
         </div>
       </div>
 
       {user.bio && (
-        <p className="text-text-secondary text-sm leading-relaxed">{user.bio}</p>
+        <p className="text-gray-600 text-sm leading-relaxed">{user.bio}</p>
       )}
 
       {shades.length > 0 && (
         <div>
-          <h3 className="text-sm font-medium text-text-secondary mb-3">兴趣标签</h3>
+          <h3 className="text-sm font-semibold gradient-text mb-3">兴趣标签</h3>
           <div className="flex flex-wrap gap-2">
             {shades.map((shade) => (
               <div
                 key={shade.id}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm ${
-                  confidenceColors[shade.confidenceLevel] || confidenceColors.MEDIUM
-                }`}
+                className="tag tag-selected"
                 title={shade.shadeDescription}
               >
                 {shade.shadeIcon && (
-                  <img src={shade.shadeIcon} alt="" className="w-4 h-4" />
+                  <img src={shade.shadeIcon} alt="" className="w-4 h-4 inline mr-1" />
                 )}
                 {shade.shadeName}
               </div>

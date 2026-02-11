@@ -1,19 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, BookOpen, PenTool, Link as LinkIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { saveTrainingData } from "@/lib/persistence";
+import { useUser } from "@/contexts/UserContext";
 
 export default function UploadPage() {
   const router = useRouter();
+  const { isLoggedIn } = useUser();
+  const [autoFilled, setAutoFilled] = useState(false);
   const [formData, setFormData] = useState({
     xiaohongshu: "",
     feishu: "",
     thoughts: "",
     accountSync: "",
   });
+
+  // Auto-fill from SecondMe data when logged in
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    Promise.all([
+      fetch("/api/secondme/user/info").then((r) => r.json()),
+      fetch("/api/secondme/user/shades").then((r) => r.json()),
+    ]).then(([userResult, shadesResult]) => {
+      const updates: Partial<typeof formData> = {};
+      let filled = false;
+
+      if (userResult.code === 0 && userResult.data?.bio) {
+        updates.xiaohongshu = userResult.data.bio;
+        filled = true;
+      }
+
+      if (shadesResult.code === 0 && shadesResult.data?.shades?.length) {
+        const shadesText = shadesResult.data.shades
+          .map((s: { shadeName: string; shadeDescription: string }) =>
+            `${s.shadeName}：${s.shadeDescription}`
+          )
+          .join("\n");
+        updates.thoughts = shadesText;
+        filled = true;
+      }
+
+      if (filled) {
+        setFormData((prev) => ({ ...prev, ...updates }));
+        setAutoFilled(true);
+      }
+    }).catch(() => {
+      // silently fail
+    });
+  }, [isLoggedIn]);
 
   const handleSubmit = () => {
     saveTrainingData(formData);
@@ -36,9 +74,22 @@ export default function UploadPage() {
         <h1 className="text-4xl font-bold text-center mb-4 gradient-text">
           让灵偶认识你
         </h1>
-        <p className="text-center text-gray-600 mb-12">
+        <p className="text-center text-gray-600 mb-8">
           数据越丰富，灵偶越能代表真实的你
         </p>
+
+        {/* SecondMe auto-fill notice */}
+        {autoFilled && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 p-4 rounded-2xl bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 max-w-2xl mx-auto"
+          >
+            <p className="text-center text-purple-700 font-medium text-sm">
+              已检测到你的 SecondMe 数据并自动填充，你可以自由编辑
+            </p>
+          </motion.div>
+        )}
 
         {/* 四模块横向平铺 */}
         <div className="grid grid-cols-4 gap-6 mb-12">

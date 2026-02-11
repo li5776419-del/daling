@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import PuppetAvatar from "@/components/PuppetAvatar";
+import { useUser } from "@/contexts/UserContext";
 
 /* ------------------------------------------------------------------ */
 /*  Floating puppet config                                              */
@@ -44,6 +45,7 @@ function generatePuppets(count: number): FloatingPuppet[] {
 
 export default function Home() {
   const puppets = useMemo(() => generatePuppets(7), []);
+  const { user, loading, isLoggedIn } = useUser();
 
   return (
     <div className="page-bg relative overflow-hidden">
@@ -117,17 +119,86 @@ export default function Home() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.9 }}
-          className="mt-12"
+          className="mt-12 flex flex-col items-center gap-4"
         >
-          <Link href="/upload">
-            <motion.button
-              className="btn-hero"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              唤醒我的灵偶
-            </motion.button>
-          </Link>
+          {!loading && isLoggedIn ? (
+            /* ---- Logged-in state ---- */
+            <>
+              <div className="flex items-center gap-3 mb-2">
+                {user?.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt=""
+                    className="w-10 h-10 rounded-full ring-2 ring-purple-300"
+                  />
+                ) : (
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold"
+                    style={{ background: "var(--gradient-main)" }}
+                  >
+                    {user?.name?.[0] || "?"}
+                  </div>
+                )}
+                <span className="text-lg text-gray-700">
+                  欢迎回来，<span className="font-semibold gradient-text">{user?.name || "用户"}</span>
+                </span>
+              </div>
+
+              <Link href="/upload">
+                <motion.button
+                  className="btn-hero"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  继续创建灵偶
+                </motion.button>
+              </Link>
+
+              <div className="flex gap-3">
+                <Link href="/chat">
+                  <motion.button
+                    className="btn-secondary text-sm !px-6 !py-2.5"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    AI 对话
+                  </motion.button>
+                </Link>
+                <Link href="/profile">
+                  <motion.button
+                    className="btn-secondary text-sm !px-6 !py-2.5"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    个人资料
+                  </motion.button>
+                </Link>
+              </div>
+            </>
+          ) : (
+            /* ---- Logged-out state ---- */
+            <>
+              <Link href="/upload">
+                <motion.button
+                  className="btn-hero"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  唤醒我的灵偶
+                </motion.button>
+              </Link>
+
+              <a href="/api/auth/login">
+                <motion.button
+                  className="btn-secondary text-sm"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  用 SecondMe 账号登录
+                </motion.button>
+              </a>
+            </>
+          )}
         </motion.div>
 
         {/* Bottom subtle text */}

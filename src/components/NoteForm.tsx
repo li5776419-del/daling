@@ -41,9 +41,7 @@ export default function NoteForm() {
         value={content}
         onChange={(e) => setContent(e.target.value)}
         placeholder="告诉 AI 关于你的事情，比如：我喜欢在雨天喝咖啡..."
-        className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-border
-                   text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20
-                   placeholder:text-text-secondary/60"
+        className="input-field w-full resize-none"
         rows={3}
       />
       <div className="flex items-center justify-between">
@@ -52,7 +50,7 @@ export default function NoteForm() {
             className={`text-sm ${
               feedback.includes("失败") || feedback.includes("错误")
                 ? "text-red-500"
-                : "text-primary"
+                : "gradient-text font-medium"
             }`}
           >
             {feedback}
@@ -61,10 +59,7 @@ export default function NoteForm() {
         <button
           type="submit"
           disabled={!content.trim() || sending}
-          className="ml-auto px-5 py-2 rounded-full text-sm font-medium text-white
-                     gradient-primary disabled:opacity-40
-                     hover:shadow-md hover:shadow-primary/20
-                     transition-shadow duration-200"
+          className="ml-auto btn-primary !py-2 !px-6 text-sm"
         >
           {sending ? "发送中..." : "让 TA 记住"}
         </button>

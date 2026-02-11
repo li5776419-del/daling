@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import PuppetAvatar from "@/components/PuppetAvatar";
+import { useUser } from "@/contexts/UserContext";
+import { useChat } from "@/hooks/useChat";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -18,7 +20,7 @@ interface Message {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Pre-scripted A2A dialogue                                          */
+/*  Pre-scripted A2A dialogue (demo mode)                              */
 /* ------------------------------------------------------------------ */
 
 const aiDialogue: { speaker: "puppet_mine" | "puppet_other"; message: string; time: string }[] = [
@@ -35,7 +37,7 @@ const aiDialogue: { speaker: "puppet_mine" | "puppet_other"; message: string; ti
 ];
 
 /* ------------------------------------------------------------------ */
-/*  Responses to human intervention                                    */
+/*  Demo mode: responses to human intervention                         */
 /* ------------------------------------------------------------------ */
 
 const humanResponsesMine = [
@@ -69,14 +71,22 @@ function TypingDots() {
 /* ------------------------------------------------------------------ */
 
 export default function SoulDialoguePage() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
+  const { isLoggedIn, loading: userLoading } = useUser();
+  const isRealMode = isLoggedIn;
+
+  // Demo mode state
+  const [demoMessages, setDemoMessages] = useState<Message[]>([]);
   const [dialogueIndex, setDialogueIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [isTyping, setIsTyping] = useState<Speaker | null>(null);
   const [humanIntervened, setHumanIntervened] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+  // Real mode state
+  const { messages: chatMessages, isStreaming, sendMessage } = useChat();
+
+  // Shared state
+  const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,11 +98,11 @@ export default function SoulDialoguePage() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isTyping, scrollToBottom]);
+  }, [demoMessages, chatMessages, isTyping, scrollToBottom]);
 
-  /* ---- Auto A2A dialogue engine ---- */
+  /* ---- Auto A2A dialogue engine (demo mode only) ---- */
   useEffect(() => {
-    if (isPaused || dialogueIndex >= aiDialogue.length) return;
+    if (isRealMode || isPaused || dialogueIndex >= aiDialogue.length) return;
 
     const entry = aiDialogue[dialogueIndex];
     const delay = dialogueIndex === 0 ? 1200 : 2000 + Math.random() * 1500;
@@ -105,7 +115,7 @@ export default function SoulDialoguePage() {
         setIsTyping(null);
 
         const msgId = `ai-${dialogueIndex}`;
-        setMessages((prev) => [
+        setDemoMessages((prev) => [
           ...prev,
           { id: msgId, speaker: entry.speaker, content: "", time: entry.time, typing: true },
         ]);
@@ -113,7 +123,7 @@ export default function SoulDialoguePage() {
         let charIdx = 0;
         const charInterval = setInterval(() => {
           charIdx++;
-          setMessages((prev) =>
+          setDemoMessages((prev) =>
             prev.map((m) =>
               m.id === msgId
                 ? { ...m, content: entry.message.slice(0, charIdx), typing: charIdx < entry.message.length }
@@ -131,35 +141,43 @@ export default function SoulDialoguePage() {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [dialogueIndex, isPaused]);
+  }, [dialogueIndex, isPaused, isRealMode]);
 
-  /* ---- Human sends a message ---- */
+  /* ---- Handle send ---- */
   async function handleSend() {
     const text = input.trim();
-    if (!text || isSending) return;
+    if (!text) return;
 
-    setIsPaused(true);
-    setHumanIntervened(true);
-    setIsSending(true);
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
 
-    const humanMsg: Message = {
-      id: `human-${Date.now()}`,
-      speaker: "human",
-      content: text,
-      time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
-    };
-    setMessages((prev) => [...prev, humanMsg]);
+    if (isRealMode) {
+      // Real mode: send through SecondMe chat API
+      await sendMessage(text);
+    } else {
+      // Demo mode: pre-scripted responses
+      if (isSending) return;
+      setIsPaused(true);
+      setHumanIntervened(true);
+      setIsSending(true);
 
-    const idx = humanResponseIdx.current;
-    humanResponseIdx.current++;
+      const humanMsg: Message = {
+        id: `human-${Date.now()}`,
+        speaker: "human",
+        content: text,
+        time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+      };
+      setDemoMessages((prev) => [...prev, humanMsg]);
 
-    await typeResponse(`mine-resp-${Date.now()}`, "puppet_mine", humanResponsesMine[idx % humanResponsesMine.length]);
-    await typeResponse(`other-resp-${Date.now()}`, "puppet_other", humanResponsesOther[idx % humanResponsesOther.length]);
+      const idx = humanResponseIdx.current;
+      humanResponseIdx.current++;
 
-    setIsSending(false);
-    setTimeout(() => setIsPaused(false), 2000);
+      await typeResponse(`mine-resp-${Date.now()}`, "puppet_mine", humanResponsesMine[idx % humanResponsesMine.length]);
+      await typeResponse(`other-resp-${Date.now()}`, "puppet_other", humanResponsesOther[idx % humanResponsesOther.length]);
+
+      setIsSending(false);
+      setTimeout(() => setIsPaused(false), 2000);
+    }
   }
 
   async function typeResponse(msgId: string, speaker: Speaker, text: string) {
@@ -167,7 +185,7 @@ export default function SoulDialoguePage() {
     await wait(600 + Math.random() * 600);
     setIsTyping(null);
 
-    setMessages((prev) => [
+    setDemoMessages((prev) => [
       ...prev,
       { id: msgId, speaker, content: "", typing: true,
         time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) },
@@ -177,7 +195,7 @@ export default function SoulDialoguePage() {
       let charIdx = 0;
       const interval = setInterval(() => {
         charIdx++;
-        setMessages((prev) =>
+        setDemoMessages((prev) =>
           prev.map((m) =>
             m.id === msgId
               ? { ...m, content: text.slice(0, charIdx), typing: charIdx < text.length }
@@ -237,13 +255,45 @@ export default function SoulDialoguePage() {
           personality: "emotional" as const,
           align: "justify-center",
           bubble: "text-white rounded-2xl shadow-lg shadow-purple-500/20",
-          labelColor: "text-primary",
+          labelColor: "gradient-text font-semibold",
         };
     }
   }
 
+  if (userLoading) {
+    return (
+      <div className="page-bg flex items-center justify-center min-h-screen">
+        <div className="loading-spinner" />
+      </div>
+    );
+  }
+
+  // In real mode, convert chatMessages to the visual Message format
+  const realModeMessages: Message[] = chatMessages.map((m) => ({
+    id: m.id,
+    speaker: m.role === "user" ? "human" as const : "puppet_other" as const,
+    content: m.content,
+    time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
+  }));
+
+  const displayMessages = isRealMode ? realModeMessages : demoMessages;
+  const isBusy = isRealMode ? isStreaming : isSending;
+
   return (
     <div className="h-screen flex flex-col page-bg">
+      {/* ---- Demo mode banner ---- */}
+      {!isRealMode && (
+        <div className="shrink-0 px-4 py-2 text-center text-xs font-medium"
+          style={{ background: "var(--gradient-main)", color: "white" }}
+        >
+          演示模式 —{" "}
+          <a href="/api/auth/login" className="underline underline-offset-2 hover:opacity-80">
+            登录 SecondMe
+          </a>
+          {" "}后解锁真实 AI 对话
+        </div>
+      )}
+
       {/* ---- Top nav ---- */}
       <div className="shrink-0 glass px-4 py-2.5 flex items-center gap-3 z-10">
         <a href="/resonance" className="p-2 rounded-full hover:bg-white/40 transition-colors shrink-0">
@@ -254,13 +304,17 @@ export default function SoulDialoguePage() {
 
         <div className="flex items-center gap-2 flex-1 min-w-0 justify-center">
           <PuppetAvatar seed="me-center" size={28} personality="emotional" />
-          <span className="text-xs text-text-secondary font-mono">⟷</span>
+          <span className="text-xs text-gray-400 font-mono">⟷</span>
           <PuppetAvatar seed="dreamer-x1" size={28} personality="deep" />
           <div className="ml-1.5 min-w-0">
-            <p className="text-xs font-medium text-foreground truncate">你的灵偶 ⟷ 虚像筑梦师的灵偶</p>
+            <p className="text-xs font-medium text-gray-800 truncate">
+              {isRealMode ? "你 ⟷ SecondMe AI" : "你的灵偶 ⟷ 虚像筑梦师的灵偶"}
+            </p>
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-sm shadow-green-500/50" />
-              <span className="text-[9px] font-mono text-green-600/70 tracking-wider uppercase">AI Dialogue in Progress</span>
+              <span className="text-[9px] font-mono text-green-600/70 tracking-wider uppercase">
+                {isRealMode ? "Live Chat" : "AI Dialogue in Progress"}
+              </span>
             </div>
           </div>
         </div>
@@ -273,7 +327,17 @@ export default function SoulDialoguePage() {
       {/* ---- Messages ---- */}
       <div className="flex-1 overflow-y-auto scrollbar-hide px-4 py-4">
         <div className="max-w-2xl mx-auto space-y-5">
-          {messages.map((msg) => {
+          {/* Real mode welcome */}
+          {isRealMode && displayMessages.length === 0 && (
+            <div className="text-center py-16">
+              <PuppetAvatar seed="dreamer-x1" size={80} personality="deep" className="mx-auto mb-4" />
+              <p className="text-gray-500 text-sm">
+                已连接 SecondMe AI，开始你们的真实对话吧
+              </p>
+            </div>
+          )}
+
+          {displayMessages.map((msg) => {
             const cfg = getSpeakerConfig(msg.speaker);
             const isHuman = msg.speaker === "human";
 
@@ -297,10 +361,13 @@ export default function SoulDialoguePage() {
                       <span className={`text-[9px] font-mono tracking-wider ${cfg.labelColor} ${
                         isHuman ? "font-semibold" : ""
                       }`}>
-                        {cfg.label}
+                        {isRealMode
+                          ? (isHuman ? "YOU" : "SecondMe AI")
+                          : cfg.label
+                        }
                       </span>
                       {msg.time && (
-                        <span className="text-[9px] text-text-secondary/30 font-mono">{msg.time}</span>
+                        <span className="text-[9px] text-gray-300 font-mono">{msg.time}</span>
                       )}
                     </div>
 
@@ -321,7 +388,8 @@ export default function SoulDialoguePage() {
             );
           })}
 
-          {isTyping && (
+          {/* Demo mode typing indicator */}
+          {!isRealMode && isTyping && (
             <div className={`flex ${
               isTyping === "puppet_other" ? "justify-end" : "justify-start"
             } animate-[fadeIn_0.2s_ease-out]`}>
@@ -346,6 +414,20 @@ export default function SoulDialoguePage() {
             </div>
           )}
 
+          {/* Real mode streaming indicator */}
+          {isRealMode && isStreaming && chatMessages[chatMessages.length - 1]?.content === "" && (
+            <div className="flex justify-end animate-[fadeIn_0.2s_ease-out]">
+              <div className="flex items-end gap-2 flex-row-reverse">
+                <div className="shrink-0">
+                  <PuppetAvatar seed="dreamer-x1" size={30} personality="deep" />
+                </div>
+                <div className="px-4 py-3 rounded-2xl bg-blue-50 border border-blue-200/50 rounded-br-md text-blue-400">
+                  <TypingDots />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -359,13 +441,13 @@ export default function SoulDialoguePage() {
               value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="观察中... 你也可以随时插话"
+              placeholder={isRealMode ? "和 SecondMe AI 对话..." : "观察中... 你也可以随时插话"}
               rows={1}
               className="input-field text-sm resize-none leading-relaxed max-h-[120px] !rounded-2xl"
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isSending}
+              disabled={!input.trim() || isBusy}
               className="p-2.5 rounded-full text-white shrink-0 disabled:opacity-30 hover:shadow-md transition-shadow duration-200 cursor-pointer"
               style={{ background: "var(--gradient-main)" }}
             >
@@ -376,11 +458,15 @@ export default function SoulDialoguePage() {
             </button>
           </div>
           <p className={`text-center text-[9px] font-mono tracking-wider mt-2 uppercase transition-colors duration-500 ${
-            humanIntervened ? "text-primary/50" : "text-text-secondary/40"
+            isRealMode
+              ? "gradient-text"
+              : humanIntervened ? "text-purple-500/50" : "text-gray-400/40"
           }`}>
-            {humanIntervened
-              ? "Human Intervention — 真实用户已介入对话"
-              : "AI Dialogue in Progress — 灵偶正在自主交流"
+            {isRealMode
+              ? "Live Chat — SecondMe AI 真实对话"
+              : humanIntervened
+                ? "Human Intervention — 真实用户已介入对话"
+                : "AI Dialogue in Progress — 灵偶正在自主交流"
             }
           </p>
         </div>
