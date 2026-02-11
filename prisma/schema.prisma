@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id             String   @id @default(cuid())
+  secondmeUserId String   @unique @map("secondme_user_id")
+  name           String?
+  email          String?
+  avatarUrl      String?  @map("avatar_url")
+  accessToken    String   @map("access_token")
+  refreshToken   String   @map("refresh_token")
+  tokenExpiresAt DateTime @map("token_expires_at")
+  intimacyScore  Int      @default(50) @map("intimacy_score")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  notes Note[]
+
+  @@map("users")
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  content   String
+  noteId    Int?     @map("note_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notes")
+}
